@@ -101,9 +101,10 @@ function PersonForm({ label, prefix, defaults, control, register, errors, resetP
         </div>
 
         <div className="pt-4 border-t border-gray-200">
-          <div className="flex items-center mb-3">
+          <div className="flex flex-wrap mb-3">
             <p className="font-semibold text-gray-800 text-sm">金利変動シナリオ</p>
             <TooltipIcon text="将来の段階的な金利上昇リスクをリアルにシミュレーションするため、複数回の変動予定を組み合わせて追加できます。" />
+            <p className="w-full text-xs leading-[1.8em] text-gray-600 mt-2 p-2 bg-lime-50/50 rounded-lg border border-lime-100">借入開始からの経過月数で追加していきます。例: 借入開始が2025年8月の場合は初期値が「1→2025年8月」です。その後、変動があった経過月を指定します。半年後に変動があれば「6→2026年1月」、一年後に変動があれば「12→2026年7月」です。</p>
           </div>
 
           <div className="space-y-3">
@@ -113,7 +114,7 @@ function PersonForm({ label, prefix, defaults, control, register, errors, resetP
                   <div>
                     <label className="flex items-center text-xs text-gray-600 mb-1">
                       変動発生月
-                      {index === 0 && <TooltipIcon text="借入開始から何ヶ月目に新しい金利へ変更されるか（適用されるか）を指定します。" />}
+                      {index === 0 && <TooltipIcon text="借入開始からの経過月数で指定します。例: 借入開始が2025年8月の場合、1→2025年8月、6→2026年1月、12→2026年7月になります。既存シナリオは保持され、後から追加したシナリオはその月以降に適用されます。" />}
                     </label>
                     <div className="flex items-center">
                       <input
@@ -128,7 +129,7 @@ function PersonForm({ label, prefix, defaults, control, register, errors, resetP
                   <div>
                     <label className="flex items-center text-xs text-gray-600 mb-1">
                       変動後金利
-                      {index === 0 && <TooltipIcon text="変動発生月に変更されたあとの新しい年利を指定します。" />}
+                      {index === 0 && <TooltipIcon text="変動発生月に変更された後の新しい金利を指定します。" />}
                     </label>
                     <div className="flex items-center">
                       <input
@@ -157,7 +158,7 @@ function PersonForm({ label, prefix, defaults, control, register, errors, resetP
 
           <button
             type="button"
-            onClick={() => append({ changeMonth: 12, newRate: 1.0 })}
+            onClick={() => append({ changeMonth: 6, newRate: 1.05 })}
             className="mt-3 w-full flex items-center justify-center py-2 px-4 border border-dashed border-gray-300 rounded-lg text-sm text-blue-600 font-medium hover:bg-blue-50 transition-colors"
           >
             <Plus size={16} className="mr-1" />
@@ -181,7 +182,7 @@ export function LoanForm({ initialHusband, initialWife, onCalculate }: LoanFormP
       changeMonth: s.monthOffset,
       newRate: s.interestRate
     }));
-    return mapped.length > 0 ? mapped : [{ changeMonth: 11, newRate: 0.84 }];
+    return mapped.length > 0 ? mapped : [];
   };
 
   const defaultValues: FormValues = {
@@ -216,7 +217,10 @@ export function LoanForm({ initialHusband, initialWife, onCalculate }: LoanFormP
       termYears: d.termYears,
       scenarios: [
         { monthOffset: 1, interestRate: d.initialRate },
-        ...d.scenarios.map(s => ({ monthOffset: s.changeMonth, interestRate: s.newRate }))
+        ...d.scenarios
+          // 変動発生月が1以上のものだけを反映する
+          .filter(s => Number(s.changeMonth) > 0)
+          .map(s => ({ monthOffset: s.changeMonth, interestRate: s.newRate }))
       ]
     });
 

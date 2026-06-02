@@ -4,23 +4,27 @@ import { mergeMonthlyDetails } from './lib/loanMerger'
 import { LoanChart } from './components/LoanChart'
 import { LoanForm } from './components/LoanForm'
 
-// 年二回（4月、10月）金利の見直しがあって、それぞれ翌々月（6月、12月）から適用される
+// 年二回（4月、10月）金利の見直しがあって、
+// それぞれ翌々月（6月、12月）から適用されるという一般的な見直し事例を想定
 const INITIAL_HUSBAND: LoanConditions = {
   principal: 18100000,
   termYears: 30,
-  scenarios: [
-    { monthOffset: 6, interestRate: 0.68 },
-    { monthOffset: 12, interestRate: 0.84 }
-  ]
+  // 各テストシナリオは、借入開始（例： 2025.08）からの経過月数と、その月から適用される金利を指定する
+  // つまり「開始時1ヶ月目は 0.68 でスタートし、6か月目には 0.84 に、12か月目には 0.96 に、...48か月目には～」といった累積になっていく。
+  // ※実際の金利変動はフォームUIで個別に追加する想定だが、事前に判明している過去分がある場合は以下のように複数シナリオを明示的に設定することも可能。
+  // scenarios: [
+  //   { monthOffset: 1, interestRate: 0.68 },  // 8月借入の場合 8月
+  //   { monthOffset: 6, interestRate: 0.84 },  // 8月借入の場合 翌1月
+  //   { monthOffset: 12, interestRate: 0.96 }, // 8月借入の場合 翌7月
+  //   { monthOffset: 48, interestRate: 1.2 }   // 8月借入の場合 4年後の8月
+  // ]
+  scenarios: [{ monthOffset: 1, interestRate: 0.68 }]
 };
 
 const INITIAL_WIFE: LoanConditions = {
   principal: 18200000,
   termYears: 30,
-  scenarios: [
-    { monthOffset: 6, interestRate: 0.68 },
-    { monthOffset: 12, interestRate: 0.84 }
-  ]
+  scenarios: [{ monthOffset: 1, interestRate: 0.68 }]
 };
 
 function App() {
