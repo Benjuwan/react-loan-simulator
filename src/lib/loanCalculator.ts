@@ -7,6 +7,7 @@ export interface LoanConditions {
   principal: number; // 借入金額
   termYears: number; // 借入期間（年）
   scenarios: InterestRateScenario[]; // 金利シナリオ
+  customMonthlyPayment?: number; // 手動設定された月々の返済額
 }
 
 export interface MonthlyDetail {
@@ -27,7 +28,7 @@ export interface MonthlyDetail {
  * @param remainingMonths 残り返済回数(月)
  * @returns 毎月の返済額
  */
-function calculatePMT(principal: number, annualRate: number, remainingMonths: number): number {
+export function calculatePMT(principal: number, annualRate: number, remainingMonths: number): number {
   const monthlyRate = annualRate / 12 / 100;
   if (monthlyRate === 0) return principal / remainingMonths;
   const factor = Math.pow(1 + monthlyRate, remainingMonths);
@@ -56,6 +57,9 @@ export function calculateLoan(conditions: LoanConditions): MonthlyDetail[] {
 
   // 初期の返済額（元利均等返済の基本公式に基づく）を計算
   let currentPayment = calculatePMT(currentBalance, currentAnnualRate, totalMonths);
+  if (conditions.customMonthlyPayment && conditions.customMonthlyPayment > 0) {
+    currentPayment = conditions.customMonthlyPayment;
+  }
 
   // 5年ルールの適用: 返済額の見直しは 61ヶ月目(6年目の最初の月)、121ヶ月目... に行われる
   let nextPaymentReviewMonth = 61;
@@ -68,14 +72,20 @@ export function calculateLoan(conditions: LoanConditions): MonthlyDetail[] {
     // 2. 5年ごとの返済額見直し (5年ルール ＆ 125%ルール適用)
     if (month === nextPaymentReviewMonth) {
       const remainingMonths = totalMonths - month + 1;
-      // 現在の残高と最新の金利に基づいて、本来必要な「新しい返済額」を再計算する
-      const recalculatedPayment = calculatePMT(currentBalance, appliedAnnualRate, remainingMonths);
+      
+      if (conditions.customMonthlyPayment && conditions.customMonthlyPayment > 0) {
+        // ユーザーが月々の支払額を任意で固定（調整）している場合は再計算による下方・上方修正を行わず、指定額を維持する
+        currentPayment = conditions.customMonthlyPayment;
+      } else {
+        // 現在の残高と最新の金利に基づいて、本来必要な「新しい返済額」を再計算する
+        const recalculatedPayment = calculatePMT(currentBalance, appliedAnnualRate, remainingMonths);
 
-      // 125%ルール: 金利がいくら暴騰しても、新しい返済額は前の返済額の1.25倍を上限とする（激変緩和措置）
-      const maxAllowedPayment = Math.floor(currentPayment * 1.25);
+        // 125%ルール: 金利がいくら暴騰しても、新しい返済額は前の返済額の1.25倍を上限とする（激変緩和措置）
+        const maxAllowedPayment = Math.floor(currentPayment * 1.25);
 
-      // 再計算された額と、上限額（1.25倍）のうち、低い方を新しい返済額として採用
-      currentPayment = Math.min(recalculatedPayment, maxAllowedPayment);
+        // 再計算された額と、上限額（1.25倍）のうち、低い方を新しい返済額として採用
+        currentPayment = Math.min(recalculatedPayment, maxAllowedPayment);
+      }
 
       // 次回の見直しはさらに5年後（60ヶ月後）
       nextPaymentReviewMonth += 60;
@@ -127,8 +137,10 @@ export function calculateLoan(conditions: LoanConditions): MonthlyDetail[] {
 
     // 最終回等で元金以上の過剰な支払いにならないように調整
     if (principalPayment > currentBalance) {
+      const excessPrincipal = principalPayment - currentBalance;
       principalPayment = currentBalance;
-      currentPayment = interestPayment + principalPayment; // 最終回の実際の返済額を補正
+      // 最終回の実際の返済額を補正（利息 + 未払利息充当分 + 元金の合計）
+      currentPayment -= excessPrincipal;
     }
 
     // 元金残高を更新
