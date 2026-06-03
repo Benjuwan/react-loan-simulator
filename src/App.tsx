@@ -3,6 +3,7 @@ import { calculateLoan, type LoanConditions, type MonthlyDetail } from './lib/lo
 import { mergeMonthlyDetails } from './lib/loanMerger'
 import { LoanChart } from './components/LoanChart'
 import { LoanForm } from './components/LoanForm'
+import { PaymentHistory } from './components/PaymentHistory'
 
 // 年二回（4月、10月）金利の見直しがあって、
 // それぞれ翌々月（6月、12月）から適用されるという一般的な見直し事例を想定
@@ -35,13 +36,15 @@ function App() {
   const [resultWife, setResultWife] = useState<MonthlyDetail[]>(resW);
   const [resultMerged, setResultMerged] = useState<MonthlyDetail[]>(mergeMonthlyDetails(resH, resW));
   const [viewMode, setViewMode] = useState<'merged' | 'husband' | 'wife'>('merged');
+  const [startDate, setStartDate] = useState<string>('2025-08'); // デフォルトは2025年8月
 
-  const handleCalculate = (husbandData: LoanConditions, wifeData: LoanConditions) => {
+  const handleCalculate = (husbandData: LoanConditions, wifeData: LoanConditions, newStartDate: string) => {
     const resH = calculateLoan(husbandData);
     const resW = calculateLoan(wifeData);
     setResultHusband(resH);
     setResultWife(resW);
     setResultMerged(mergeMonthlyDetails(resH, resW));
+    setStartDate(newStartDate);
   };
 
   const activeData = viewMode === 'merged' ? resultMerged : (viewMode === 'husband' ? resultHusband : resultWife);
@@ -57,6 +60,7 @@ function App() {
         <LoanForm
           initialHusband={INITIAL_HUSBAND}
           initialWife={INITIAL_WIFE}
+          initialStartDate={startDate}
           onCalculate={handleCalculate}
         />
 
@@ -81,7 +85,10 @@ function App() {
               妻のみ
             </button>
           </div>
-          <LoanChart data={activeData} />
+          <div className="space-y-8">
+            <PaymentHistory data={activeData} startDate={startDate} isMerged={viewMode === 'merged'} />
+            <LoanChart data={activeData} />
+          </div>
         </div>
 
         <div className="text-xs text-slate-500 mt-4 px-4 space-y-1 pb-8">

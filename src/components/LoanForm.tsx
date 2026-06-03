@@ -1,10 +1,12 @@
 import { useForm, useFieldArray } from 'react-hook-form';
-import type { Control, UseFormRegister, FieldErrors } from 'react-hook-form';
+import type { Control, UseFormRegister, UseFormWatch, FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus, Trash2 } from 'lucide-react';
 import type { LoanConditions } from '../lib/loanCalculator';
+import { calculatePMT } from '../lib/loanCalculator';
 import { TooltipIcon } from './TooltipIcon';
+import { formatCurrency } from '../lib/utils';
 
 // NaN対応と共通エラーメッセージを持つカスタムナンバーバリデーション
 const customNumber = (minVal: number, minMsg: string, maxVal?: number, maxMsg?: string) => {
@@ -29,10 +31,31 @@ const personSchema = z.object({
   principal: customNumber(0, "0以上を指定してください"),
   termYears: customNumber(1, "1以上を指定してください", 50, "最大50年です"),
   initialRate: customNumber(0, "0以上を指定してください"),
+  monthlyPayment: customNumber(1, "1円以上を指定してください"),
+  fixedPaymentEnabled: z.boolean(),
+  fixedPaymentAmount: z.union([customNumber(1, "1円以上を指定してください"), z.nan(), z.undefined()]).optional(),
   scenarios: z.array(scenarioSchema)
+}).superRefine((data, ctx) => {
+  // 固定モードが有効な場合、固定額は必須
+  if (data.fixedPaymentEnabled) {
+    if (data.fixedPaymentAmount === undefined || data.fixedPaymentAmount === null || Number.isNaN(data.fixedPaymentAmount)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "固定モードが有効な場合、固定額を入力してください",
+        path: ["fixedPaymentAmount"],
+      });
+    } else if (data.fixedPaymentAmount < 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "1円以上を指定してください",
+        path: ["fixedPaymentAmount"],
+      });
+    }
+  }
 });
 
 const formSchema = z.object({
+  startDate: z.string().regex(/^\d{4}-\d{2}$/, "無効な年月です"),
   husband: personSchema,
   wife: personSchema
 });
@@ -45,17 +68,20 @@ interface PersonFormProps {
   defaults: LoanConditions;
   control: Control<FormValues>;
   register: UseFormRegister<FormValues>;
+  watch: UseFormWatch<FormValues>;
   errors: FieldErrors<FormValues>;
   resetPerson: (prefix: "husband" | "wife", defaults: LoanConditions) => void;
 }
 
-function PersonForm({ label, prefix, defaults, control, register, errors, resetPerson }: PersonFormProps) {
+function PersonForm({ label, prefix, defaults, control, register, watch, errors, resetPerson }: PersonFormProps) {
   const { fields, append, remove } = useFieldArray({
     control,
     name: `${prefix}.scenarios`
   });
 
   const personErrors = errors[prefix];
+  const isFixedEnabled = watch(`${prefix}.fixedPaymentEnabled`);
+  const pmtValue = watch(`${prefix}.monthlyPayment`);
 
   return (
     <div className="flex-1 bg-gray-50 p-6 rounded-xl border border-gray-200">
@@ -79,6 +105,43 @@ function PersonForm({ label, prefix, defaults, control, register, errors, resetP
             {...register(`${prefix}.principal`, { valueAsNumber: true })}
           />
           {personErrors?.principal && <p className="text-red-500 text-xs mt-1">{personErrors.principal.message}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">月々の支払額（自動計算）</label>
+          <div className="w-full rounded-lg border border-gray-200 bg-gray-100 p-2 text-gray-700 font-semibold">
+            {formatCurrency(pmtValue || 0)}
+          </div>
+          <p className="text-xs text-gray-500 mt-1">借入額・金利・期間から自動計算された元利均等返済額です。各項目を変更した場合は「再計算する」ボタン押下後に反映されます。5年ルール・125%ルールが適用されます。</p>
+          {/* PMT値を hidden で保持 */}
+          <input type="hidden" {...register(`${prefix}.monthlyPayment`, { valueAsNumber: true })} />
+        </div>
+
+        {/* 固定モード */}
+        <div className={`p-3 rounded-lg border transition-colors ${
+          isFixedEnabled ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'
+        }`}>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-1 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+              {...register(`${prefix}.fixedPaymentEnabled`)}
+            />
+            <div>
+              <span className="text-sm font-medium text-gray-700">支払額を固定する（繰り上げ返済シミュレーション）</span>
+              <p className="text-xs text-gray-500 mt-1">チェックを入れると、5年ごとの返済額見直し（5年ルール）を適用せず、指定した金額で固定して返済した場合のシミュレーションを行います。通常より多い額を設定すると、繰り上げ返済の効果を確認できます。</p>
+            </div>
+          </label>
+          {isFixedEnabled && (
+            <div className="mt-3 ml-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">固定額 (円)</label>
+              <input
+                type="number"
+                className={`w-full rounded-lg border p-2 focus:ring-2 focus:ring-amber-500 focus:outline-none ${personErrors?.fixedPaymentAmount ? 'border-red-500' : 'border-gray-300'}`}
+                {...register(`${prefix}.fixedPaymentAmount`, { valueAsNumber: true })}
+              />
+              {personErrors?.fixedPaymentAmount && <p className="text-red-500 text-xs mt-1">{personErrors.fixedPaymentAmount.message}</p>}
+            </div>
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">借入期間 (年)</label>
@@ -173,10 +236,11 @@ function PersonForm({ label, prefix, defaults, control, register, errors, resetP
 interface LoanFormProps {
   initialHusband: LoanConditions;
   initialWife: LoanConditions;
-  onCalculate: (husband: LoanConditions, wife: LoanConditions) => void;
+  initialStartDate: string;
+  onCalculate: (husband: LoanConditions, wife: LoanConditions, startDate: string) => void;
 }
 
-export function LoanForm({ initialHusband, initialWife, onCalculate }: LoanFormProps) {
+export function LoanForm({ initialHusband, initialWife, initialStartDate, onCalculate }: LoanFormProps) {
   const mapInitialScenarios = (scenarios: LoanConditions['scenarios']) => {
     const mapped = scenarios.slice(1).map(s => ({
       changeMonth: s.monthOffset,
@@ -186,16 +250,23 @@ export function LoanForm({ initialHusband, initialWife, onCalculate }: LoanFormP
   };
 
   const defaultValues: FormValues = {
+    startDate: initialStartDate,
     husband: {
       principal: initialHusband.principal / 10000,
       termYears: initialHusband.termYears,
       initialRate: initialHusband.scenarios[0].interestRate,
+      monthlyPayment: calculatePMT(initialHusband.principal, initialHusband.scenarios[0].interestRate, initialHusband.termYears * 12),
+      fixedPaymentEnabled: !!initialHusband.customMonthlyPayment,
+      fixedPaymentAmount: initialHusband.customMonthlyPayment || calculatePMT(initialHusband.principal, initialHusband.scenarios[0].interestRate, initialHusband.termYears * 12),
       scenarios: mapInitialScenarios(initialHusband.scenarios)
     },
     wife: {
       principal: initialWife.principal / 10000,
       termYears: initialWife.termYears,
       initialRate: initialWife.scenarios[0].interestRate,
+      monthlyPayment: calculatePMT(initialWife.principal, initialWife.scenarios[0].interestRate, initialWife.termYears * 12),
+      fixedPaymentEnabled: !!initialWife.customMonthlyPayment,
+      fixedPaymentAmount: initialWife.customMonthlyPayment || calculatePMT(initialWife.principal, initialWife.scenarios[0].interestRate, initialWife.termYears * 12),
       scenarios: mapInitialScenarios(initialWife.scenarios)
     }
   };
@@ -205,6 +276,7 @@ export function LoanForm({ initialHusband, initialWife, onCalculate }: LoanFormP
     register,
     handleSubmit,
     setValue,
+    watch,
     formState: { errors }
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -215,6 +287,8 @@ export function LoanForm({ initialHusband, initialWife, onCalculate }: LoanFormP
     const toLoanConditions = (d: z.infer<typeof personSchema>): LoanConditions => ({
       principal: d.principal * 10000,
       termYears: d.termYears,
+      // 固定モードが明示的に有効な場合のみ customMonthlyPayment を送信
+      customMonthlyPayment: d.fixedPaymentEnabled ? d.fixedPaymentAmount : undefined,
       scenarios: [
         { monthOffset: 1, interestRate: d.initialRate },
         ...d.scenarios
@@ -224,13 +298,16 @@ export function LoanForm({ initialHusband, initialWife, onCalculate }: LoanFormP
       ]
     });
 
-    onCalculate(toLoanConditions(data.husband), toLoanConditions(data.wife));
+    onCalculate(toLoanConditions(data.husband), toLoanConditions(data.wife), data.startDate);
   };
 
   const resetPerson = (prefix: "husband" | "wife", defaults: LoanConditions) => {
     setValue(`${prefix}.principal`, defaults.principal / 10000);
     setValue(`${prefix}.termYears`, defaults.termYears);
     setValue(`${prefix}.initialRate`, defaults.scenarios[0].interestRate);
+    setValue(`${prefix}.monthlyPayment`, calculatePMT(defaults.principal, defaults.scenarios[0].interestRate, defaults.termYears * 12));
+    setValue(`${prefix}.fixedPaymentEnabled`, false);
+    setValue(`${prefix}.fixedPaymentAmount`, calculatePMT(defaults.principal, defaults.scenarios[0].interestRate, defaults.termYears * 12));
     setValue(`${prefix}.scenarios`, mapInitialScenarios(defaults.scenarios));
 
     // リセット直後に現在のフォーム全体の値を使って再計算を走らせる
@@ -240,15 +317,28 @@ export function LoanForm({ initialHusband, initialWife, onCalculate }: LoanFormP
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 relative">
       <h2 className="text-xl font-bold text-slate-800 mb-6">シミュレーション条件入力</h2>
+      
+      <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+        <label className="block text-sm font-bold text-gray-700 mb-2">借入開始年月</label>
+        <div className="max-w-xs">
+          <input
+            type="month"
+            className={`w-full rounded-lg border p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none ${errors.startDate ? 'border-red-500' : 'border-gray-300'}`}
+            {...register('startDate')}
+          />
+          {errors.startDate && <p className="text-red-500 text-xs mt-1">{errors.startDate.message}</p>}
+        </div>
+        <p className="text-xs text-gray-500 mt-2">※現在日時と比較し、直近1年間を月別明細で表示するための基準となります。</p>
+      </div>
 
       <div className="flex flex-col md:flex-row gap-6 mb-8">
         <PersonForm
           label="夫のローン" prefix="husband" defaults={initialHusband}
-          control={control} register={register} errors={errors} resetPerson={resetPerson}
+          control={control} register={register} watch={watch} errors={errors} resetPerson={resetPerson}
         />
         <PersonForm
           label="妻のローン" prefix="wife" defaults={initialWife}
-          control={control} register={register} errors={errors} resetPerson={resetPerson}
+          control={control} register={register} watch={watch} errors={errors} resetPerson={resetPerson}
         />
       </div>
 
