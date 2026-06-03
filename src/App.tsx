@@ -54,7 +54,15 @@ function App() {
       <div className="max-w-5xl mx-auto space-y-8">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">住宅ローン シミュレーション (ペアローン対応)</h1>
-          <p className="mt-2 text-sm text-slate-500">金利変動による月々の支払内訳と、元金残高の推移を視覚化します。</p>
+          <div className="text-xs mt-3 p-2 bg-lime-50/50 rounded-lg border border-lime-100">
+            <p>夫婦それぞれの住宅ローンを個別に設定し、変動金利や5年ルール・125%ルールの影響を可視化するシミュレーターです。</p>
+            <p>借入条件と将来の金利変動シナリオを入力すると、月々の支払額・元金・利息・未払利息の推移をグラフと明細で確認できます。</p>
+            <ul className="list-disc mt-2 pl-4">
+              <li>異なる金利変動パターンで、夫婦の世帯合算／個別返済の比較を行いたい。</li>
+              <li>5年ごとの返済額見直しや125%ルールが、返済計画に与える影響を把握したい。</li>
+              <li>金利上昇時に未払利息が発生するリスクを視覚的に確認したい。</li>
+            </ul>
+          </div>
         </div>
 
         <LoanForm

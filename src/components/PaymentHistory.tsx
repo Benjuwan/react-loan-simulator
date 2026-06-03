@@ -9,7 +9,7 @@ interface PaymentHistoryProps {
   isMerged?: boolean;
 }
 
-type HistoryBlock = 
+type HistoryBlock =
   | { type: 'chunk'; label: string; startYear: number; endYear: number; items: MonthlyDetail[] }
   | { type: 'recent'; label: string; items: MonthlyDetail[] };
 
@@ -54,7 +54,7 @@ function calculateSummary(items: MonthlyDetail[]) {
   const avgPrincipal = items.reduce((s, i) => s + i.principalPayment, 0) / len;
   const avgInterest = items.reduce((s, i) => s + i.interestPayment, 0) / len;
   const endBalance = items[len - 1].principalBalance;
-  
+
   return { avgPayment, avgInterestRate, avgPrincipal, avgInterest, endBalance };
 }
 
@@ -66,7 +66,7 @@ export function PaymentHistory({ data, startDate = "2025-08", isMerged = false }
     const [startYearStr, startMonthStr] = startDate.split('-');
     const startYear = parseInt(startYearStr, 10);
     const startMonth = parseInt(startMonthStr, 10);
-    
+
     const now = new Date();
     // 借入開始から現在までの経過月数 (未来の借入なら1からスタート)
     const rawOffset = (now.getFullYear() - startYear) * 12 + (now.getMonth() + 1 - startMonth) + 1;
@@ -85,7 +85,7 @@ export function PaymentHistory({ data, startDate = "2025-08", isMerged = false }
         if (!chunksMap.has(periodIndex)) chunksMap.set(periodIndex, []);
         chunksMap.get(periodIndex)!.push(d);
       }
-      
+
       const newBlocks: HistoryBlock[] = [];
       Array.from(chunksMap.entries()).sort(([a], [b]) => a - b).forEach(([, periodItems]) => {
         const startY = Math.floor((periodItems[0].month - 1) / 12) + 1;
@@ -141,7 +141,7 @@ export function PaymentHistory({ data, startDate = "2025-08", isMerged = false }
           } else {
             const summary = calculateSummary(block.items);
             if (!summary) return null;
-            
+
             return (
               <details key={`chunk-${idx}`} className="group border border-gray-200 rounded-lg bg-white shadow-sm overflow-hidden">
                 <summary className="px-4 py-4 cursor-pointer bg-gray-50 hover:bg-gray-100 flex items-center justify-between list-none [&::-webkit-details-marker]:hidden">
@@ -160,7 +160,7 @@ export function PaymentHistory({ data, startDate = "2025-08", isMerged = false }
                     <ChevronDown className="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform" />
                   </div>
                 </summary>
-                
+
                 <div className="border-t border-gray-200 bg-white">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50/50 border-b border-gray-100 text-sm">
                     <div>
@@ -182,7 +182,7 @@ export function PaymentHistory({ data, startDate = "2025-08", isMerged = false }
                       <p className="font-bold text-gray-700">{formatCurrency(summary.endBalance)}</p>
                     </div>
                   </div>
-                  <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                  <div className="overflow-x-auto max-h-100 overflow-y-auto">
                     <DetailTable items={block.items} isMerged={isMerged} />
                   </div>
                 </div>
