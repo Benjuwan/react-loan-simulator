@@ -3,10 +3,9 @@ import type { Control, UseFormRegister, UseFormWatch, FieldErrors } from 'react-
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus, Trash2 } from 'lucide-react';
-import type { LoanConditions } from '../lib/loanCalculator';
-import { calculatePMT } from '../lib/loanCalculator';
+import type { LoanConditions } from '../ts/modelInterfaces';
+import { calculatePayment, formatCurrency } from '../lib/utils';
 import { TooltipIcon } from './TooltipIcon';
-import { formatCurrency } from '../lib/utils';
 
 // NaN対応と共通エラーメッセージを持つカスタムナンバーバリデーション
 const customNumber = (minVal: number, minMsg: string, maxVal?: number, maxMsg?: string) => {
@@ -117,9 +116,8 @@ function PersonForm({ label, prefix, defaults, control, register, watch, errors,
         </div>
 
         {/* 固定モード */}
-        <div className={`p-3 rounded-lg border transition-colors ${
-          isFixedEnabled ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'
-        }`}>
+        <div className={`p-3 rounded-lg border transition-colors ${isFixedEnabled ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'
+          }`}>
           <label className="flex items-start gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -255,18 +253,18 @@ export function LoanForm({ initialHusband, initialWife, initialStartDate, onCalc
       principal: initialHusband.principal / 10000,
       termYears: initialHusband.termYears,
       initialRate: initialHusband.scenarios[0].interestRate,
-      monthlyPayment: calculatePMT(initialHusband.principal, initialHusband.scenarios[0].interestRate, initialHusband.termYears * 12),
+      monthlyPayment: calculatePayment(initialHusband.principal, initialHusband.scenarios[0].interestRate, initialHusband.termYears * 12),
       fixedPaymentEnabled: !!initialHusband.customMonthlyPayment,
-      fixedPaymentAmount: initialHusband.customMonthlyPayment || calculatePMT(initialHusband.principal, initialHusband.scenarios[0].interestRate, initialHusband.termYears * 12),
+      fixedPaymentAmount: initialHusband.customMonthlyPayment || calculatePayment(initialHusband.principal, initialHusband.scenarios[0].interestRate, initialHusband.termYears * 12),
       scenarios: mapInitialScenarios(initialHusband.scenarios)
     },
     wife: {
       principal: initialWife.principal / 10000,
       termYears: initialWife.termYears,
       initialRate: initialWife.scenarios[0].interestRate,
-      monthlyPayment: calculatePMT(initialWife.principal, initialWife.scenarios[0].interestRate, initialWife.termYears * 12),
+      monthlyPayment: calculatePayment(initialWife.principal, initialWife.scenarios[0].interestRate, initialWife.termYears * 12),
       fixedPaymentEnabled: !!initialWife.customMonthlyPayment,
-      fixedPaymentAmount: initialWife.customMonthlyPayment || calculatePMT(initialWife.principal, initialWife.scenarios[0].interestRate, initialWife.termYears * 12),
+      fixedPaymentAmount: initialWife.customMonthlyPayment || calculatePayment(initialWife.principal, initialWife.scenarios[0].interestRate, initialWife.termYears * 12),
       scenarios: mapInitialScenarios(initialWife.scenarios)
     }
   };
@@ -305,9 +303,9 @@ export function LoanForm({ initialHusband, initialWife, initialStartDate, onCalc
     setValue(`${prefix}.principal`, defaults.principal / 10000);
     setValue(`${prefix}.termYears`, defaults.termYears);
     setValue(`${prefix}.initialRate`, defaults.scenarios[0].interestRate);
-    setValue(`${prefix}.monthlyPayment`, calculatePMT(defaults.principal, defaults.scenarios[0].interestRate, defaults.termYears * 12));
+    setValue(`${prefix}.monthlyPayment`, calculatePayment(defaults.principal, defaults.scenarios[0].interestRate, defaults.termYears * 12));
     setValue(`${prefix}.fixedPaymentEnabled`, false);
-    setValue(`${prefix}.fixedPaymentAmount`, calculatePMT(defaults.principal, defaults.scenarios[0].interestRate, defaults.termYears * 12));
+    setValue(`${prefix}.fixedPaymentAmount`, calculatePayment(defaults.principal, defaults.scenarios[0].interestRate, defaults.termYears * 12));
     setValue(`${prefix}.scenarios`, mapInitialScenarios(defaults.scenarios));
 
     // リセット直後に現在のフォーム全体の値を使って再計算を走らせる
@@ -317,7 +315,7 @@ export function LoanForm({ initialHusband, initialWife, initialStartDate, onCalc
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 relative">
       <h2 className="text-xl font-bold text-slate-800 mb-6">シミュレーション条件入力</h2>
-      
+
       <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
         <label className="block text-sm font-bold text-gray-700 mb-2">借入開始年月</label>
         <div className="max-w-xs">
