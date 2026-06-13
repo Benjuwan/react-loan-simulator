@@ -25,7 +25,7 @@ function DetailTable({
         {items.map((d) => (
           <tr key={`month-${d.month}`} className="not-last-of-type:border-b bg-white hover:bg-gray-50">
             <td className="px-4 py-2 font-medium text-gray-800">
-              {/* 月数を「X年Yヶ月」の形式にフォーマット（例: 25 -> "2年1ヶ月"） */}
+              {/* 月数を「X年Yヶ月」の形式にフォーマット（例: 25 -> "2年1ヶ月"： 厳密には"3年目 1ヶ月目"） */}
               {Math.floor((d.month - 1) / 12) + 1}年目 {((d.month - 1) % 12) + 1}ヶ月目
             </td>
             <td className="px-4 py-2 text-right">
