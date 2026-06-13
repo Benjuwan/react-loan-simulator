@@ -1,263 +1,77 @@
-import { useForm, useFieldArray } from 'react-hook-form';
-import type { Control, UseFormRegister, UseFormWatch, FieldErrors } from 'react-hook-form';
+// useForm: フォーム全体の状態管理（値の取得・バリデーション・送信処理）を提供するフック
+import { useForm } from 'react-hook-form';
+
+// zodResolver: Zod スキーマを RHF のバリデーションリゾルバーとして接続するアダプター（フォーム送信時に Zod スキーマによるバリデーションが自動実行される）
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Plus, Trash2 } from 'lucide-react';
+
+/**
+ * formSchema: フォーム全体の Zod バリデーションスキーマ（zodResolver に渡す）
+ * FormValues: formSchema から推論されたフォーム全体の型（useForm のジェネリクスに指定）
+ * PersonValues: personSchema から推論された個人（夫/妻）の入力値の型（toLoanConditions の引数型に使用）
+ */
+import { formSchema, type FormValues, type PersonValues } from '../schema/zodSchema';
+
 import type { LoanConditions } from '../ts/modelInterfaces';
-import { calculatePayment, formatCurrency } from '../lib/utils';
-import { TooltipIcon } from './TooltipIcon';
+import { calculatePayment } from '../lib/utils';
+import { PersonForm } from './PersonalLoanForm';
 
-// NaN対応と共通エラーメッセージを持つカスタムナンバーバリデーション
-const customNumber = (minVal: number, minMsg: string, maxVal?: number, maxMsg?: string) => {
-  let schema = z.number({
-    error: "無効な値です。数値を入力してください"
-  })
-    .refine(val => !Number.isNaN(val), { message: "無効な値です。数値を入力してください" })
-    .refine(val => val >= minVal, { message: minMsg });
-
-  if (maxVal !== undefined && maxMsg !== undefined) {
-    schema = schema.refine(val => val <= maxVal, { message: maxMsg });
-  }
-  return schema;
-};
-
-const scenarioSchema = z.object({
-  changeMonth: customNumber(2, "2ヶ月目以降を指定してください"),
-  newRate: customNumber(0, "0以上を指定してください")
-});
-
-const personSchema = z.object({
-  principal: customNumber(0, "0以上を指定してください"),
-  termYears: customNumber(1, "1以上を指定してください", 50, "最大50年です"),
-  initialRate: customNumber(0, "0以上を指定してください"),
-  monthlyPayment: customNumber(1, "1円以上を指定してください"),
-  fixedPaymentEnabled: z.boolean(),
-  fixedPaymentAmount: z.union([customNumber(1, "1円以上を指定してください"), z.nan(), z.undefined()]).optional(),
-  scenarios: z.array(scenarioSchema)
-}).superRefine((data, ctx) => {
-  // 固定モードが有効な場合、固定額は必須
-  if (data.fixedPaymentEnabled) {
-    if (data.fixedPaymentAmount === undefined || data.fixedPaymentAmount === null || Number.isNaN(data.fixedPaymentAmount)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "固定モードが有効な場合、固定額を入力してください",
-        path: ["fixedPaymentAmount"],
-      });
-    } else if (data.fixedPaymentAmount < 1) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "1円以上を指定してください",
-        path: ["fixedPaymentAmount"],
-      });
-    }
-  }
-});
-
-const formSchema = z.object({
-  startDate: z.string().regex(/^\d{4}-\d{2}$/, "無効な年月です"),
-  husband: personSchema,
-  wife: personSchema
-});
-
-type FormValues = z.infer<typeof formSchema>;
-
-interface PersonFormProps {
-  label: string;
-  prefix: "husband" | "wife";
-  defaults: LoanConditions;
-  control: Control<FormValues>;
-  register: UseFormRegister<FormValues>;
-  watch: UseFormWatch<FormValues>;
-  errors: FieldErrors<FormValues>;
-  resetPerson: (prefix: "husband" | "wife", defaults: LoanConditions) => void;
-}
-
-function PersonForm({ label, prefix, defaults, control, register, watch, errors, resetPerson }: PersonFormProps) {
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: `${prefix}.scenarios`
-  });
-
-  const personErrors = errors[prefix];
-  const isFixedEnabled = watch(`${prefix}.fixedPaymentEnabled`);
-  const pmtValue = watch(`${prefix}.monthlyPayment`);
-
-  return (
-    <div className="flex-1 bg-gray-50 p-6 rounded-xl border border-gray-200">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-bold text-gray-800">{label}</h3>
-        <button
-          type="button"
-          onClick={() => resetPerson(prefix, defaults)}
-          className="text-xs font-medium text-gray-500 hover:text-blue-600 transition-colors border border-gray-300 hover:border-blue-600 rounded px-2 py-1 bg-white"
-        >
-          リセット
-        </button>
-      </div>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">借入額 (万円)</label>
-          <input
-            type="number"
-            step="any"
-            className={`w-full rounded-lg border p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none ${personErrors?.principal ? 'border-red-500' : 'border-gray-300'}`}
-            {...register(`${prefix}.principal`, { valueAsNumber: true })}
-          />
-          {personErrors?.principal && <p className="text-red-500 text-xs mt-1">{personErrors.principal.message}</p>}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">月々の支払額（自動計算）</label>
-          <div className="w-full rounded-lg border border-gray-200 bg-gray-100 p-2 text-gray-700 font-semibold">
-            {formatCurrency(pmtValue || 0)}
-          </div>
-          <p className="text-xs text-gray-500 mt-1">借入額・金利・期間から自動計算された元利均等返済額です。各項目を変更した場合は「再計算する」ボタン押下後に反映されます。5年ルール・125%ルールが適用されます。</p>
-          {/* PMT値を hidden で保持 */}
-          <input type="hidden" {...register(`${prefix}.monthlyPayment`, { valueAsNumber: true })} />
-        </div>
-
-        {/* 固定モード */}
-        <div className={`p-3 rounded-lg border transition-colors ${isFixedEnabled ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'
-          }`}>
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              className="mt-1 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-              {...register(`${prefix}.fixedPaymentEnabled`)}
-            />
-            <div>
-              <span className="text-sm font-medium text-gray-700">支払額を固定する（繰り上げ返済シミュレーション）</span>
-              <p className="text-xs text-gray-500 mt-1">チェックを入れると、5年ごとの返済額見直し（5年ルール）を適用せず、指定した金額で固定して返済した場合のシミュレーションを行います。通常より多い額を設定すると、繰り上げ返済の効果を確認できます。</p>
-            </div>
-          </label>
-          {isFixedEnabled && (
-            <div className="mt-3 ml-6">
-              <label className="block text-sm font-medium text-gray-700 mb-1">固定額 (円)</label>
-              <input
-                type="number"
-                className={`w-full rounded-lg border p-2 focus:ring-2 focus:ring-amber-500 focus:outline-none ${personErrors?.fixedPaymentAmount ? 'border-red-500' : 'border-gray-300'}`}
-                {...register(`${prefix}.fixedPaymentAmount`, { valueAsNumber: true })}
-              />
-              {personErrors?.fixedPaymentAmount && <p className="text-red-500 text-xs mt-1">{personErrors.fixedPaymentAmount.message}</p>}
-            </div>
-          )}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">借入期間 (年)</label>
-          <input
-            type="number"
-            className={`w-full rounded-lg border p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none ${personErrors?.termYears ? 'border-red-500' : 'border-gray-300'}`}
-            {...register(`${prefix}.termYears`, { valueAsNumber: true })}
-          />
-          {personErrors?.termYears && <p className="text-red-500 text-xs mt-1">{personErrors.termYears.message}</p>}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">当初金利 (%)</label>
-          <input
-            type="number"
-            step="0.001"
-            className={`w-full rounded-lg border p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none ${personErrors?.initialRate ? 'border-red-500' : 'border-gray-300'}`}
-            {...register(`${prefix}.initialRate`, { valueAsNumber: true })}
-          />
-          {personErrors?.initialRate && <p className="text-red-500 text-xs mt-1">{personErrors.initialRate.message}</p>}
-        </div>
-
-        <div className="pt-4 border-t border-gray-200">
-          <div className="flex flex-wrap mb-3">
-            <p className="font-semibold text-gray-800 text-sm">金利変動シナリオ</p>
-            <TooltipIcon text="将来の段階的な金利上昇リスクをリアルにシミュレーションするため、複数回の変動予定を組み合わせて追加できます。" />
-            <p className="w-full text-xs leading-[1.8em] text-gray-600 mt-2 p-2 bg-lime-50/50 rounded-lg border border-lime-100">借入開始からの経過月数で追加していきます。例: 借入開始が2025年8月の場合は初期値が「1→2025年8月」です。その後、変動があった経過月を指定します。半年後に変動があれば「6→2026年1月」、一年後に変動があれば「12→2026年7月」です。</p>
-          </div>
-
-          <div className="space-y-3">
-            {fields.map((field, index) => (
-              <div key={field.id} className="relative p-3 bg-white border border-gray-200 rounded-lg shadow-sm group">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="flex items-center text-xs text-gray-600 mb-1">
-                      変動発生月
-                      {index === 0 && <TooltipIcon text="借入開始からの経過月数で指定します。例: 借入開始が2025年8月の場合、1→2025年8月、6→2026年1月、12→2026年7月になります。既存シナリオは保持され、後から追加したシナリオはその月以降に適用されます。" />}
-                    </label>
-                    <div className="flex items-center">
-                      <input
-                        type="number"
-                        className={`w-full rounded-lg border p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none ${personErrors?.scenarios?.[index]?.changeMonth ? 'border-red-500' : 'border-gray-300'}`}
-                        {...register(`${prefix}.scenarios.${index}.changeMonth`, { valueAsNumber: true })}
-                      />
-                      <span className="ml-2 text-sm text-gray-500">ヶ月</span>
-                    </div>
-                    {personErrors?.scenarios?.[index]?.changeMonth && <p className="text-red-500 text-xs mt-1">{personErrors.scenarios[index]?.changeMonth?.message}</p>}
-                  </div>
-                  <div>
-                    <label className="flex items-center text-xs text-gray-600 mb-1">
-                      変動後金利
-                      {index === 0 && <TooltipIcon text="変動発生月に変更された後の新しい金利を指定します。" />}
-                    </label>
-                    <div className="flex items-center">
-                      <input
-                        type="number"
-                        step="0.001"
-                        className={`w-full rounded-lg border p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none ${personErrors?.scenarios?.[index]?.newRate ? 'border-red-500' : 'border-gray-300'}`}
-                        {...register(`${prefix}.scenarios.${index}.newRate`, { valueAsNumber: true })}
-                      />
-                      <span className="ml-2 text-sm text-gray-500">%</span>
-                    </div>
-                    {personErrors?.scenarios?.[index]?.newRate && <p className="text-red-500 text-xs mt-1">{personErrors.scenarios[index]?.newRate?.message}</p>}
-                  </div>
-                </div>
-                {/* 削除ボタン */}
-                <button
-                  type="button"
-                  onClick={() => remove(index)}
-                  className="absolute -top-2 -right-2 bg-red-100 text-red-600 hover:bg-red-200 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                  title="このシナリオを削除"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => append({ changeMonth: 6, newRate: 1.05 })}
-            className="mt-3 w-full flex items-center justify-center py-2 px-4 border border-dashed border-gray-300 rounded-lg text-sm text-blue-600 font-medium hover:bg-blue-50 transition-colors"
-          >
-            <Plus size={16} className="mr-1" />
-            金利変動シナリオを追加
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
+// LoanForm の Props 型定義
 interface LoanFormProps {
-  initialHusband: LoanConditions;
-  initialWife: LoanConditions;
-  initialStartDate: string;
+  initialHusband: LoanConditions;   // 夫のローン初期条件（App.tsx の INITIAL_HUSBAND）
+  initialWife: LoanConditions;      // 妻のローン初期条件（App.tsx の INITIAL_WIFE）
+  initialStartDate: string;         // 借入開始年月の初期値（例: "2025-08"）
+  // onCalculate: フォーム送信時に呼ばれるコールバック。変換済みの LoanConditions を親に渡し、親側で calculateLoan() → setMonthlyDetails() を実行してグラフ・テーブルを更新する
   onCalculate: (husband: LoanConditions, wife: LoanConditions, startDate: string) => void;
 }
 
-export function LoanForm({ initialHusband, initialWife, initialStartDate, onCalculate }: LoanFormProps) {
+/**
+ * ローンシミュレーション条件入力フォーム（メインコンポーネント）
+ *【データフロー】
+ * 1. App.tsx から initialHusband / initialWife を受け取り、defaultValues に変換
+ * 2. ユーザーがフォーム入力・変更
+ * 3. 「再計算する」ボタン押下 → handleSubmit → onSubmit → toLoanConditions で FormValues → LoanConditions に変換
+ * 4. onCalculate コールバックで親に LoanConditions を渡す
+ * 5. 親（App.tsx）が calculateLoan() を実行し、結果をグラフ・テーブルに反映
+ */
+export function LoanForm({
+  initialHusband,
+  initialWife,
+  initialStartDate,
+  onCalculate
+}: LoanFormProps) {
+  // LoanConditions.scenarios（計算エンジン用の形式）をフォーム用の形式に変換する
   const mapInitialScenarios = (scenarios: LoanConditions['scenarios']) => {
+    // scenarios[0]（= 当初金利）は initialRate フィールドで別管理するため slice(1) で除外
     const mapped = scenarios.slice(1).map(s => ({
+      // { monthOffset, interestRate } → { changeMonth, newRate } にプロパティ名を変換
       changeMonth: s.monthOffset,
       newRate: s.interestRate
     }));
+
+    // デフォルト値は空配列
     return mapped.length > 0 ? mapped : [];
   };
 
+  // RHF用のデフォルトフォーム値
   const defaultValues: FormValues = {
     startDate: initialStartDate,
+    // 夫のローン
     husband: {
+      // 円 → 万円（計算エンジン側は「円」単位だが、フォーム上は「万円」単位で入力するために / 10000 する）
       principal: initialHusband.principal / 10000,
       termYears: initialHusband.termYears,
+      // 当初金利（scenarios の先頭要素）
       initialRate: initialHusband.scenarios[0].interestRate,
+      // 月々の返済額[円]: calculatePayment(借入額[円], 年利[%], 返済回数[月])で元利均等返済の月額を自動算出して初期値とする
       monthlyPayment: calculatePayment(initialHusband.principal, initialHusband.scenarios[0].interestRate, initialHusband.termYears * 12),
+      // customMonthlyPayment が設定されていれば true（`!!`で boolean 変換）
+      // - customMonthlyPayment: fixedPaymentEnabled（固定モード： 繰り上げ返済シミュレーション）が true の場合のみ fixedPaymentAmount（固定支払額）を設定（これにより calculateLoan() 内で5年ルールの返済額見直しが無効化され、指定額で固定返済される）
       fixedPaymentEnabled: !!initialHusband.customMonthlyPayment,
+      // customMonthlyPayment があればその値、なければ自動算出値をフォールバック
       fixedPaymentAmount: initialHusband.customMonthlyPayment || calculatePayment(initialHusband.principal, initialHusband.scenarios[0].interestRate, initialHusband.termYears * 12),
       scenarios: mapInitialScenarios(initialHusband.scenarios)
     },
+    // 妻のローン
     wife: {
       principal: initialWife.principal / 10000,
       termYears: initialWife.termYears,
@@ -270,65 +84,88 @@ export function LoanForm({ initialHusband, initialWife, initialStartDate, onCalc
   };
 
   const {
-    control,
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors }
+    control,        // useFieldArray に渡す制御オブジェクト
+    register,       // 各 input を RHF に登録する関数
+    handleSubmit,   // フォーム送信時のバリデーション＆コールバック実行を制御する関数
+    setValue,       // プログラム的にフォームフィールドの値を設定する関数（resetPerson で使用）
+    watch,          // フォーム値をリアクティブに監視する関数（fixedPaymentEnabled の状態監視に使用）
+    formState: { errors }  // Zod バリデーションエラーオブジェクト（各フィールドのエラーメッセージを含む）
   } = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(formSchema), // zod スキーマ（`../schema/zodSchema.ts`）をバリデーション処理に適用
     defaultValues
   });
 
+  // 送信イベントハンドラー
+  /**
+    * フォーム入力値（PersonValues）を計算エンジン用の LoanConditions に変換する
+    *
+    * 【変換内容】
+    * - principal: 万円 → 円（× 10000）
+    * - customMonthlyPayment: fixedPaymentEnabled（固定モード： 繰り上げ返済シミュレーション）が true の場合のみ fixedPaymentAmount（固定支払額）を設定（これにより calculateLoan() 内で5年ルールの返済額見直しが無効化され、指定額で固定返済される）
+    * - scenarios: 当初金利（initialRate）を先頭要素として追加し、ユーザーが追加した変動シナリオ（changeMonth → monthOffset, newRate → interestRate）を結合。changeMonth が 0 以下のシナリオは filter で除外（無効データの安全策）
+  */
   const onSubmit = (data: FormValues) => {
-    const toLoanConditions = (d: z.infer<typeof personSchema>): LoanConditions => ({
-      principal: d.principal * 10000,
+    const toLoanConditions = (d: PersonValues): LoanConditions => ({
+      principal: d.principal * 10000,     // 万円 → 円
       termYears: d.termYears,
       // 固定モードが明示的に有効な場合のみ customMonthlyPayment を送信
       customMonthlyPayment: d.fixedPaymentEnabled ? d.fixedPaymentAmount : undefined,
       scenarios: [
+        // scenarios[0]: 当初金利（borrowing 開始月 = monthOffset: 1）
         { monthOffset: 1, interestRate: d.initialRate },
+        // scenarios[1+]: ユーザーが追加した金利変動シナリオ
         ...d.scenarios
           // 変動発生月が1以上のものだけを反映する
           .filter(s => Number(s.changeMonth) > 0)
+          // { changeMonth, newRate } → { monthOffset, interestRate } にプロパティ名を変換
           .map(s => ({ monthOffset: s.changeMonth, interestRate: s.newRate }))
       ]
     });
 
+    // 変換した LoanConditions を親コンポーネントのコールバックに渡す
     onCalculate(toLoanConditions(data.husband), toLoanConditions(data.wife), data.startDate);
   };
 
+  /**
+   * 個人フォームを初期値にリセットする関数
+   *
+   *【意図】
+   * RHF の reset() ではなく setValue() を個別に呼んでいる理由:
+   * reset() はフォーム全体をリセットするため、夫のリセット時に妻のフォームも初期化されてしまうが、setValue() なら prefix で指定した個人のフィールドのみを更新できる。
+   */
   const resetPerson = (prefix: "husband" | "wife", defaults: LoanConditions) => {
-    setValue(`${prefix}.principal`, defaults.principal / 10000);
+    setValue(`${prefix}.principal`, defaults.principal / 10000);                       // 円 → 万円
     setValue(`${prefix}.termYears`, defaults.termYears);
-    setValue(`${prefix}.initialRate`, defaults.scenarios[0].interestRate);
+    setValue(`${prefix}.initialRate`, defaults.scenarios[0].interestRate);             // 当初金利
+    // 月々の支払額を元利均等返済の計算値にリセット
     setValue(`${prefix}.monthlyPayment`, calculatePayment(defaults.principal, defaults.scenarios[0].interestRate, defaults.termYears * 12));
-    setValue(`${prefix}.fixedPaymentEnabled`, false);
+    setValue(`${prefix}.fixedPaymentEnabled`, false);                                 // 固定モード解除
+    // 固定額も計算値にリセット（次回固定モード有効化時のデフォルト値として機能）
     setValue(`${prefix}.fixedPaymentAmount`, calculatePayment(defaults.principal, defaults.scenarios[0].interestRate, defaults.termYears * 12));
-    setValue(`${prefix}.scenarios`, mapInitialScenarios(defaults.scenarios));
+    setValue(`${prefix}.scenarios`, mapInitialScenarios(defaults.scenarios));          // 金利変動シナリオを初期値に
 
     // リセット直後に現在のフォーム全体の値を使って再計算を走らせる
+    // handleSubmit(onSubmit) は「バリデーション → onSubmit 実行」を返す関数で「末尾の () で即時実行関数」にしている
     handleSubmit(onSubmit)();
   };
 
   return (
+    // handleSubmit(onSubmit): form の onSubmit イベントで Zod バリデーション → onSubmit コールバックを実行
     <form onSubmit={handleSubmit(onSubmit)} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 relative">
       <h2 className="text-xl font-bold text-slate-800 mb-6">シミュレーション条件入力</h2>
-
       <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
         <label className="block text-sm font-bold text-gray-700 mb-2">借入開始年月</label>
         <div className="max-w-xs">
           <input
-            type="month"
+            type="month" // 年月選択UI（YYYY-MM形式）
             className={`w-full rounded-lg border p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none ${errors.startDate ? 'border-red-500' : 'border-gray-300'}`}
+            // 借入開始年月は PaymentHistory.tsx で「直近12ヶ月」ブロックの基準日として使用される
             {...register('startDate')}
           />
           {errors.startDate && <p className="text-red-500 text-xs mt-1">{errors.startDate.message}</p>}
         </div>
         <p className="text-xs text-gray-500 mt-2">※現在日時と比較し、直近1年間を月別明細で表示するための基準となります。</p>
       </div>
-
       <div className="flex flex-col md:flex-row gap-6 mb-8">
         <PersonForm
           label="夫のローン" prefix="husband" defaults={initialHusband}
@@ -339,7 +176,6 @@ export function LoanForm({ initialHusband, initialWife, initialStartDate, onCalc
           control={control} register={register} watch={watch} errors={errors} resetPerson={resetPerson}
         />
       </div>
-
       <div className="text-center">
         <button
           type="submit"

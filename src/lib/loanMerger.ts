@@ -31,7 +31,8 @@ export function mergeMonthlyDetails(
 
     mergedDetails.push({
       month: index + 1, // 当月を含むため+1
-      // interestRate: 表示上の金利は 2つの金利のうち高い方を参考値として採用（※楽観的観測ではなく悲観的観測での想定シミュレーションを行えるように）
+      // interestRate: 2つの金利のうち高い方を参考値として採用しているが、
+      //               表示時は「合算表示の場合、金利が個別に異なる可能性があるため`-`と表示」している
       interestRate: Math.max(firstMonthlyDetail.interestRate, secondMonthlyDetail.interestRate),
       paymentAmount: firstMonthlyDetail.paymentAmount + secondMonthlyDetail.paymentAmount,
       interestPayment: firstMonthlyDetail.interestPayment + secondMonthlyDetail.interestPayment,

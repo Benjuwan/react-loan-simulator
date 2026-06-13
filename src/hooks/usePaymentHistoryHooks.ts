@@ -85,6 +85,7 @@ export const usePaymentHistoryHooks = () => {
 
         // 「5年(60ヶ月)単位で月別支払い全期間データをブロック化したマップオブジェクト」を配列化してソート処理し、
         // 各グループキーごとの月別支払詳細データ（periodItems）をベースにループ処理を実施
+        // ※`_`を使っている意図： lint エラーが出るが「Mapインデックスは意図的に使用しない」ことを明示するため
         Array.from(chunksMap.entries()).sort(([a], [b]) => a - b).forEach(([_, periodItems]) => {
             // グループに含まれる最初の月データから開始年を計算（例：1年目）
             const startY = Math.floor((periodItems[0].month - 1) / 12) + 1;
