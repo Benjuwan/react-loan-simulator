@@ -7,7 +7,8 @@ export interface LoanConditions {
     principal: number;                  // 借入金額
     termYears: number;                  // 借入期間（年）
     scenarios: InterestRateScenario[];  // 金利シナリオ
-    customMonthlyPayment?: number;      // 手動設定された月々の返済額
+    initialMonthlyPayment?: number;     // ユーザー指定の初期返済額（5年ルールは通常通り適用）
+    customMonthlyPayment?: number;      // 手動設定された月々の返済額（固定モード: 5年ルールの見直しも無効化）
 }
 
 export interface MonthlyDetail {

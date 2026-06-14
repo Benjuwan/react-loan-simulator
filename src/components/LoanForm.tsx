@@ -108,6 +108,8 @@ export function LoanForm({
     const toLoanConditions = (d: PersonValues): LoanConditions => ({
       principal: d.principal * 10000,     // 万円 → 円
       termYears: d.termYears,
+      // ユーザー指定の初期返済額（5年ルールは通常通り適用される）
+      initialMonthlyPayment: d.monthlyPayment,
       // 固定モードが明示的に有効な場合のみ customMonthlyPayment を送信
       customMonthlyPayment: d.fixedPaymentEnabled ? d.fixedPaymentAmount : undefined,
       scenarios: [

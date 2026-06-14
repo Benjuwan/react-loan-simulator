@@ -42,12 +42,17 @@ export function calculateLoan(conditions: LoanConditions): MonthlyDetail[] {
   // 初期シナリオの金利を取得 (month = 1： 借り入れ開始 1か月目)
   const currentAnnualRate = _getRateForMonth(1, scenarios);
 
-  // 初期の返済額（元利均等返済の基本公式に基づく）を計算
+  // 初期返済額（元利均等返済の基本公式に基づく）を計算
   let currentPayment = calculatePayment(currentBalance, currentAnnualRate, totalMonths);
 
-  // 手動設定された月々の返済額がある場合は、初期の返済額を上書きしてから処理スタート
+  // 初期返済額の上書き
+  // ※上書き処理の優先順位: customMonthlyPayment（固定モード）> initialMonthlyPayment（ユーザー指定）> calculatePayment()（元利均等返済の公式による算出、フォールバック用）
   if (conditions.customMonthlyPayment && conditions.customMonthlyPayment > 0) {
+    // customMonthlyPayment: 固定モード（L65-67 の5年ルール見直しも無効化される）
     currentPayment = conditions.customMonthlyPayment;
+  } else if (conditions.initialMonthlyPayment && conditions.initialMonthlyPayment > 0) {
+    // initialMonthlyPayment: ユーザー指定の初期返済額（5年ルールは通常通り適用）
+    currentPayment = conditions.initialMonthlyPayment;
   }
 
   // 5年ルールの適用: 返済額の見直しは 61ヶ月目(6年目の最初の月)、121ヶ月目... に行われる
