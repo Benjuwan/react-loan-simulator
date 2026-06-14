@@ -45,13 +45,13 @@ export function PersonForm({ label, prefix, defaults, control, register, watch, 
         name: `${prefix}.scenarios`  // 例: "husband.scenarios" → FormValues.husband.scenarios に対応
     });
 
-    // errors オブジェクトから当該個人（prefix）のエラーを抽出
-    // → personErrors?.principal のようにドット記法で各フィールドのエラーにアクセスする
-    //
-    // 【補足】errors は FieldErrors<FormValues> 型で、FormValues の構造をミラーしたネストしたエラーオブジェクト。
-    // errors["husband"] / errors["wife"] とブラケット記法でアクセスすると、
-    // personSchema の各フィールド（principal, termYears 等）のエラーメッセージを個別に取得できる。
-    // RHF が FormValues の型構造から自動的にネストしたエラー型を構築するため、zodSchema 側に特別なキー定義は不要。
+    /**
+     * errors オブジェクトから当該個人（prefix）のエラーを抽出
+     * → personErrors?.principal のようにドット記法で各フィールドのエラーにアクセスする
+     * 
+     * 【補足】errors は FieldErrors<FormValues> 型で、FormValues の構造をミラーかつネストしたエラーオブジェクト。
+     * そのため、errors["husband"] / errors["wife"] とブラケット記法でアクセスするだけで、personSchema の各フィールド（principal, termYears 等）のエラーメッセージを個別に取得できる。
+    */
     const personErrors = errors[prefix];
 
     // fixedPaymentEnabled の現在値をリアクティブに監視
@@ -87,10 +87,9 @@ export function PersonForm({ label, prefix, defaults, control, register, watch, 
                 </div>
 
                 {/* ---- 月々の支払額（円）入力フィールド ----
-        ※現状、この値はフォーム送信時の toLoanConditions() では使用されておらず、計算エンジン側で借入額・金利・期間から再計算される。
-        将来的にユーザー指定の返済額を計算に反映させる場合は toLoanConditions() の修正が必要。
-        ---- 初期にはテーブルやグラフは描画されていなくとも良いので、ユーザー入力値を計算に反映させたい
-        */}
+                    この値は toLoanConditions() で initialMonthlyPayment（ユーザー指定の初期返済額）として計算エンジンに渡される。
+                    ユーザーが変更した場合、その値が初期返済額として使用され、5年ルール・125%ルールは通常通り適用される。
+                */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">月々の支払額 (円)</label>
                     {/* 初期値は defaultValues で calculatePayment() により自動算出されるが、ユーザーが任意の金額に変更可能 */}
@@ -101,6 +100,7 @@ export function PersonForm({ label, prefix, defaults, control, register, watch, 
                     />
                     {personErrors?.monthlyPayment && <p className="text-red-500 text-xs mt-1">{personErrors.monthlyPayment.message}</p>}
                     <p className="text-xs text-gray-500 mt-1">借入額・金利・期間から自動計算された初期値が設定されています。任意の金額に変更可能です。5年ルール・125%ルールが適用されます。</p>
+                    <p className="text-xs text-amber-600 mt-1">※借入額や金利・期間を変更しても、この値は自動更新されません。条件変更後はこの値も合わせて修正してください。</p>
                 </div>
 
                 {/* ---- 固定モード（繰り上げ返済シミュレーション）----
