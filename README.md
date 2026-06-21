@@ -8,23 +8,23 @@
 - @eslint/js@10.0.1
 - @hookform/resolvers@5.4.0
 - @tailwindcss/vite@4.3.1
-- @types/node@25.9.3
+- @types/node@26.0.0
 - @types/react-dom@19.2.3
 - @types/react@19.2.17
 - @vitejs/plugin-react@6.0.2
 - autoprefixer@10.5.0
 - eslint-plugin-react-hooks@7.1.1
-- eslint-plugin-react-refresh@0.5.2
+- eslint-plugin-react-refresh@0.5.3
 - eslint@10.5.0
 - globals@17.6.0
-- lucide-react@1.18.0
+- lucide-react@1.21.0
 - postcss@8.5.15
 - react-dom@19.2.7
-- react-hook-form@7.79.0
+- react-hook-form@7.80.0
 - react@19.2.7
 - recharts@3.8.1
 - tailwindcss@4.3.1
-- typescript-eslint@8.61.0
+- typescript-eslint@8.61.1
 - typescript@6.0.3
 - vite@8.0.16
 - zod@4.4.3
@@ -32,7 +32,11 @@
 ## 設計のポイント（計算ロジック）
 - **変動金利シナリオの表現**: `LoanConditions.scenarios` に `monthOffset` と `interestRate` を定義し、指定月以降の適用金利を切り替えます。
 - **元利均等返済の月次計算**: `calculateLoan()` は元利均等返済の支払額・利息・元金・残高を月次で計算し、支払期間中の変動を反映します。
-- **5年ルール**: 初回60ヶ月経過後（61ヶ月目）に返済額を見直します。固定支払額モードが有効な場合は再計算せず、指定額を維持します。
+- **初期返済額の決定（優先順位）**: 計算エンジンは以下の優先順位で初期返済額を決定します。
+  1. `customMonthlyPayment`（固定モード）: 指定額で固定し、5年ルールの見直しも無効化
+  2. `initialMonthlyPayment`（ユーザー指定）: フォームの「月々の支払額」入力値を使用し、5年ルールは通常適用
+  3. `calculatePayment()`（自動算出）: 借入額・金利・期間から元利均等返済の公式で算出（フォールバック）
+- **5年ルール**: 初回60ヶ月経過後（61ヶ月目）に返済額を見直します。固定支払額モード（`customMonthlyPayment`）が有効な場合は再計算せず、指定額を維持します。
 - **125%ルール**: 返済額見直し時、新しい支払額は直前の返済額の1.25倍を上限とします。
 - **未払利息の管理**: 当月の利息が月額返済額を超える場合、差額を未払利息として蓄積。以後の返済では未払利息を元金より優先して返済します。
 - **夫婦それぞれの独立計算と合算表示**: `calculateLoan()` を夫・妻それぞれに実行し、`mergeMonthlyDetails()` で月ごとに合算。合算表示と個別表示を切り替えて比較できます。
@@ -40,17 +44,22 @@
 ## 主要ファイル構成
 ```
 src/
-├─ App.tsx                # 画面レイアウトと状態管理。夫婦ローンの計算結果を保持し、表示モードを切り替えます。
-├─ assets/                # 画像や静的アセット
+├─ App.tsx                    # 画面レイアウトと状態管理。夫婦ローンの計算結果を保持し、表示モードを切り替えます。
+├─ assets/                    # 画像や静的アセット
 ├─ components/
-│  ├─ LoanChart.tsx       # 年間支払内訳と元金残高／未払利息推移のグラフを表示します。
-│  ├─ LoanForm.tsx        # 借入条件入力フォーム。金利シナリオを設定して再計算できます。
-│  ├─ PaymentHistory.tsx  # 月次明細テーブル。過去・直近12ヶ月・未来を分割表示します。
-│  └─ TooltipIcon.tsx     # ツールチップ表示用の小さな UI コンポーネント
-└─ lib/
-   ├─ loanCalculator.ts   # 住宅ローン計算エンジン。元利均等返済、5年ルール、125%ルール、未払利息を反映します。
-   ├─ loanMerger.ts       # 夫婦2つのローン結果を月次で合算し、世帯合算表示用のデータを作成します。
-   └─ utils.ts            # 通貨フォーマットなどの共通ユーティリティ
+│  ├─ LoanChart.tsx           # 年間支払内訳と元金残高／未払利息推移のグラフを表示します。
+│  ├─ LoanForm.tsx            # 借入条件入力フォーム全体の管理。RHF + zodResolver によるバリデーション、toLoanConditions() による FormValues → LoanConditions 変換を担当。
+│  ├─ PersonalLoanForm.tsx    # 夫・妻それぞれの個人ローン入力フォーム。LoanForm から分離された子コンポーネント。
+│  ├─ PaymentHistory.tsx      # 月次明細テーブル。過去・直近12ヶ月・未来を分割表示します。
+│  └─ TooltipIcon.tsx         # ツールチップ表示用の小さな UI コンポーネント
+├─ lib/
+│  ├─ loanCalculator.ts       # 住宅ローン計算エンジン。元利均等返済、5年ルール、125%ルール、未払利息を反映します。
+│  ├─ loanMerger.ts           # 夫婦2つのローン結果を月次で合算し、世帯合算表示用のデータを作成します。
+│  └─ utils.ts                # calculatePayment()（元利均等返済の月額計算）、通貨フォーマットなどの共通ユーティリティ
+├─ schema/
+│  └─ zodSchema.ts            # Zod バリデーションスキーマ（formSchema, personSchema, customNumber）。FormValues / PersonValues 型をエクスポート。
+└─ ts/
+   └─ modelInterfaces.ts      # LoanConditions, MonthlyDetail, InterestRateScenario の型定義。
 
 tests/
 ├─ E2E_TEST_PLAN.md             # E2E テスト方針とテストケース一覧
